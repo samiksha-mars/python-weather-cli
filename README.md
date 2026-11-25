@@ -21,11 +21,11 @@ Example output:
 
 ```
 Weather in London, United Kingdom:
-  Condition:  Partly cloudy
+  Condition:   Partly cloudy
   Temperature: 12.4°C
-  Feels like: 11.8°C
-  Humidity:   76%
-  Wind speed: 14.3km/h
+  Feels like:  11.8°C
+  Humidity:    76%
+  Wind speed:  14.3km/h
 ```
 
 ## Data source

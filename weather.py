@@ -88,11 +88,11 @@ def main(argv=None) -> None:
 
         report = "\n".join([
             f"Weather in {place.get('name')}, {place.get('country')}:",
-            f"  Condition:  {WEATHER_CODES.get(code, 'Unknown')}",
+            f"  Condition:   {WEATHER_CODES.get(code, 'Unknown')}",
             f"  Temperature: {current['temperature_2m']}{units.get('temperature_2m', '°C')}",
-            f"  Feels like: {current['apparent_temperature']}{units.get('apparent_temperature', '°C')}",
-            f"  Humidity:   {current['relative_humidity_2m']}{units.get('relative_humidity_2m', '%')}",
-            f"  Wind speed: {current['wind_speed_10m']}{units.get('wind_speed_10m', 'km/h')}",
+            f"  Feels like:  {current['apparent_temperature']}{units.get('apparent_temperature', '°C')}",
+            f"  Humidity:    {current['relative_humidity_2m']}{units.get('relative_humidity_2m', '%')}",
+            f"  Wind speed:  {current['wind_speed_10m']}{units.get('wind_speed_10m', 'km/h')}",
         ])
     except WeatherError as exc:
         print(f"Error: {exc}", file=sys.stderr)
