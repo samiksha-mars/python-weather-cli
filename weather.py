@@ -2,6 +2,7 @@
 """Show the current weather for a city using the free Open-Meteo API (no API key)."""
 
 import argparse
+import http.client
 import json
 import sys
 import urllib.error
@@ -10,6 +11,7 @@ import urllib.request
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+TIMEOUT = 15  # seconds
 
 WEATHER_CODES = {
     0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
@@ -22,10 +24,30 @@ WEATHER_CODES = {
 }
 
 
+class WeatherError(Exception):
+    """A problem fetching or understanding weather data, with a user-facing message."""
+
+
 def fetch_json(url: str) -> dict:
+    """GET ``url`` and decode its JSON body, raising WeatherError on any failure."""
     request = urllib.request.Request(url, headers={"User-Agent": "weather-cli/1.0"})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        raise WeatherError(f"Open-Meteo returned HTTP {exc.code} {exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            raise WeatherError(f"Open-Meteo did not respond within {TIMEOUT} seconds") from exc
+        raise WeatherError(f"could not reach Open-Meteo: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise WeatherError(f"Open-Meteo did not respond within {TIMEOUT} seconds") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise WeatherError(f"network error while contacting Open-Meteo: {exc}") from exc
+    try:
+        return json.loads(body.decode("utf-8"))
+    except ValueError as exc:
+        raise WeatherError("Open-Meteo sent a response that is not valid JSON") from exc
 
 
 def geocode(name: str) -> dict:
@@ -33,7 +55,7 @@ def geocode(name: str) -> dict:
     data = fetch_json(f"{GEOCODING_URL}?{params}")
     results = data.get("results")
     if not results:
-        raise ValueError(f"Location not found: {name}")
+        raise WeatherError(f"Location not found: {name}")
     return results[0]
 
 
@@ -55,19 +77,27 @@ def main(argv=None) -> None:
     try:
         place = geocode(args.city)
         data = get_current_weather(place["latitude"], place["longitude"])
-        current = data["current"]
+        current = data.get("current")
+        if not isinstance(current, dict):
+            raise WeatherError("Open-Meteo response did not include current weather")
         units = data.get("current_units", {})
         code = current.get("weather_code")
 
-        print(f"Weather in {place.get('name')}, {place.get('country')}:")
-        print(f"  Condition:  {WEATHER_CODES.get(code, 'Unknown')}")
-        print(f"  Temperature: {current['temperature_2m']}{units.get('temperature_2m', '°C')}")
-        print(f"  Feels like: {current['apparent_temperature']}{units.get('apparent_temperature', '°C')}")
-        print(f"  Humidity:   {current['relative_humidity_2m']}{units.get('relative_humidity_2m', '%')}")
-        print(f"  Wind speed: {current['wind_speed_10m']}{units.get('wind_speed_10m', 'km/h')}")
-    except (ValueError, urllib.error.URLError) as exc:
+        report = "\n".join([
+            f"Weather in {place.get('name')}, {place.get('country')}:",
+            f"  Condition:  {WEATHER_CODES.get(code, 'Unknown')}",
+            f"  Temperature: {current['temperature_2m']}{units.get('temperature_2m', '°C')}",
+            f"  Feels like: {current['apparent_temperature']}{units.get('apparent_temperature', '°C')}",
+            f"  Humidity:   {current['relative_humidity_2m']}{units.get('relative_humidity_2m', '%')}",
+            f"  Wind speed: {current['wind_speed_10m']}{units.get('wind_speed_10m', 'km/h')}",
+        ])
+    except WeatherError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
+    except KeyError as exc:
+        print(f"Error: Open-Meteo response is missing {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(report)
 
 
 if __name__ == "__main__":

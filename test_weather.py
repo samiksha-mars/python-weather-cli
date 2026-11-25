@@ -50,6 +50,32 @@ class FetchJsonTest(unittest.TestCase):
             self.assertEqual(weather.fetch_json("https://example.invalid/"), {"ok": True})
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 15)
 
+    def test_network_failures_become_weather_errors(self):
+        failures = [
+            urllib.error.URLError("Name or service not known"),
+            urllib.error.URLError(TimeoutError("timed out")),
+            urllib.error.HTTPError("https://example.invalid/", 503, "Service Unavailable", {}, None),
+            TimeoutError("The read operation timed out"),
+            ConnectionResetError(104, "Connection reset by peer"),
+        ]
+        for failure in failures:
+            with self.subTest(failure=failure):
+                with mock.patch("urllib.request.urlopen", side_effect=failure):
+                    with self.assertRaises(weather.WeatherError):
+                        weather.fetch_json("https://example.invalid/")
+
+    def test_timeout_message(self):
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaisesRegex(weather.WeatherError, "did not respond within 15 seconds"):
+                weather.fetch_json("https://example.invalid/")
+
+    def test_invalid_json(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b"<html>oops</html>"
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesRegex(weather.WeatherError, "not valid JSON"):
+                weather.fetch_json("https://example.invalid/")
+
 
 class GeocodeTest(unittest.TestCase):
 
@@ -59,7 +85,7 @@ class GeocodeTest(unittest.TestCase):
 
     def test_unknown_location(self):
         with mock.patch.object(weather, "fetch_json", side_effect=fake_api):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(weather.WeatherError):
                 weather.geocode("Nowhereville")
 
 
@@ -97,7 +123,25 @@ class MainTest(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=error):
             code, _, err = self.run_main("London")
         self.assertEqual(code, 1)
-        self.assertIn("Error:", err)
+        self.assertIn("Error: could not reach Open-Meteo: Name or service not known", err)
+
+    def test_timeout_exits_with_error(self):
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            code, out, err = self.run_main("London")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("did not respond", err)
+
+    def test_malformed_forecast_exits_with_error(self):
+        responses = {"missing current": {}, "missing field": {"current": {"weather_code": 2}}}
+        for name, forecast in responses.items():
+            with self.subTest(name):
+                api = [{"results": [LONDON]}, forecast]
+                with mock.patch.object(weather, "fetch_json", side_effect=api):
+                    code, out, err = self.run_main("London")
+                self.assertEqual(code, 1)
+                self.assertEqual(out, "")
+                self.assertIn("Error: Open-Meteo response", err)
 
 
 if __name__ == "__main__":
