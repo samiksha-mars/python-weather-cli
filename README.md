@@ -32,3 +32,11 @@ Weather in London, United Kingdom:
 
 - Geocoding: https://geocoding-api.open-meteo.com/v1/search
 - Forecast: https://api.open-meteo.com/v1/forecast
+
+## Tests
+
+The tests mock the network, so they run offline:
+
+```bash
+python3 -m unittest
+```

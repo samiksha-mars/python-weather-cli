@@ -46,11 +46,11 @@ def get_current_weather(latitude: float, longitude: float) -> dict:
     return fetch_json(f"{FORECAST_URL}?{params}")
 
 
-def main() -> None:
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(
         description="Show current weather for a city (Open-Meteo, no API key required).")
     parser.add_argument("city", help="City name")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         place = geocode(args.city)
